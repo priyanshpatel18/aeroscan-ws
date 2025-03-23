@@ -14,14 +14,19 @@
   "license": "ISC",
   "packageManager": "pnpm@10.5.1",
   "dependencies": {
+    "@prisma/client": "6.5.0",
     "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3",
+    "pinata": "^2.1.0",
     "ws": "^8.18.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.11",
+    "@types/node-cron": "^3.0.11",
     "@types/ws": "^8.18.0",
     "concurrently": "^9.1.2",
     "nodemon": "^3.1.9",
+    "prisma": "6.5.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
   }
