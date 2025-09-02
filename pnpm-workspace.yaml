@@ -2,3 +2,8 @@ ignoredBuiltDependencies:
   - '@prisma/client'
   - bufferutil
   - utf-8-validate
+
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - msgpackr-extract
+  - prisma

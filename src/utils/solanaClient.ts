@@ -1,9 +1,9 @@
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { db } from "../db";
 const bs58 = require("bs58").default;
 
-const PROGRAM_ID = new PublicKey("D5r3dMspUTkZiHDF3ZUQvD4dmATd1gjXHbzBdTtn7yU5");
+const PROGRAM_ID = new PublicKey("aero8wSmn3uAj5g5jYq92Rd2SQv2MtGxu1ZXfysfFHX");
 
 const RPC_URL = process.env.HELIUS_RPC_URL ?? "https://api.devnet.solana.com";
 
@@ -56,12 +56,13 @@ export async function updateReading(
   pm25: number,
   pm10: number,
   temperature: number,
-  humidity: number
+  humidity: number,
+  aqi: number
 ): Promise<string> {
   const program = await getProgramClient();
 
   const tx = await program.methods
-    .updateReading(solanaProvider.wallet.publicKey, pm25, pm10, temperature, humidity)
+    .updateReading(solanaProvider.wallet.publicKey, pm25, pm10, temperature, humidity, aqi)
     .accounts({
       sensorReading: SENSOR_READING_PDA,
     })
@@ -114,12 +115,12 @@ export async function subscribeToEvents(onEvent?: (event: any) => void) {
             data: {
               temperature: parsedData.temperature,
               humidity: parsedData.humidity,
-              // TODO: add pm25 and pm10
-              // pm25,
-              // pm10,
-              // aqi
+              pm25: parsedData.pm25,
+              pm10: parsedData.pm10,
+              aqi: parsedData.aqi,
             }
           });
+
           if (onEvent) {
             onEvent({ name: event.name, data: parsedData });
           }

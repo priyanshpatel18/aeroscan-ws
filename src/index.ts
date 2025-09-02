@@ -35,9 +35,17 @@ app.post("/api/sensor-data", async (req, res) => {
       });
     }
 
+    const now = Date.now();
+    SocketManager.history.push({ timestamp: now, temperature, humidity, pm25, pm10, aqi: 0 });
+
+    // Remove old readings
+    while (SocketManager.history.length && now - SocketManager.history[0].timestamp > SocketManager.HISTORY_RETENTION_MS) {
+      SocketManager.history.shift();
+    }
+
     // Update Solana reading
     // TODO: Add pm25, pm10, and aqi when implemented
-    await updateReading(0, 0, temperature, humidity);
+    await updateReading(0, 0, temperature, humidity, 0);
 
     SocketManager.users.forEach((user) => {
       if (user.socket.readyState === user.socket.OPEN) {
@@ -47,9 +55,10 @@ app.post("/api/sensor-data", async (req, res) => {
             temperature,
             humidity,
             // TODO: Add pm25, pm10, and aqi when implemented
-            // pm25,
-            // pm10,
-            // aqi
+            pm25,
+            pm10,
+            aqi: 50,
+            history: SocketManager.history
           }
         }));
       }
@@ -79,7 +88,6 @@ async function main() {
   wss.on("connection", (ws: WebSocket, req) => {
     const { query } = parse(req.url || "", true);
     const token = typeof query.token === "string" ? query.token : "";
-    console.log("Client token:", token);
 
     const user = new User(ws, token === process.env.MC_TOKEN);
     SocketManager.addUser(user);

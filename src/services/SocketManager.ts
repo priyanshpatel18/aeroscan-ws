@@ -46,9 +46,20 @@ export interface MessageData {
   payload?: any;
 }
 
+interface Reading {
+  timestamp: number;
+  temperature: number;
+  humidity: number;
+  pm25: number;
+  pm10: number;
+  aqi: number;
+}
+
 class SocketManager {
   public users: User[] = [];
   public static instance: SocketManager;
+  public history: Reading[] = [];
+  public readonly HISTORY_RETENTION_MS = 24 * 60 * 60 * 1000; // 24h
 
   public static getInstance(): SocketManager {
     if (!SocketManager.instance) {
@@ -59,7 +70,6 @@ class SocketManager {
 
   async addUser(user: User) {
     this.users.push(user);
-    console.log(`New user connected: ${this.users.length}`);
 
     user.heartbeatInterval = setInterval(() => {
       if (user.socket.readyState === user.socket.OPEN) {
@@ -114,8 +124,15 @@ class SocketManager {
 
             // const aqi = Math.max(aqiPm25, aqiPm10);
 
+            const now = Date.now();
+            this.history.push({ timestamp: now, temperature, humidity, pm25, pm10, aqi: 0 });
+
+            // Remove old readings
+            while (this.history.length && now - this.history[0].timestamp > this.HISTORY_RETENTION_MS) {
+              this.history.shift();
+            }
             // TODO: Add pm25, pm10, and aqi
-            updateReading(0, 0, temperature, humidity);
+            updateReading(0, 0, temperature, humidity, 0);
 
             // Broadcast to connected users
             this.users.forEach((u) => {
@@ -126,9 +143,10 @@ class SocketManager {
                     temperature,
                     humidity,
                     // TODO: Add pm25, pm10, and aqi
-                    // pm25,
-                    // pm10,
-                    // aqi
+                    pm25,
+                    pm10,
+                    aqi: 0,
+                    history: this.history
                   }
                 }));
               }
