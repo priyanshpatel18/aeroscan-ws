@@ -1,32 +1,45 @@
-import { redis } from "../db/redis";
-import { ValidKeyStroke } from "../helper/ValidKeyStroke";
-import { CONNECTED, GAME_ENDED, KEY_PRESSED, KEY_RELEASED, START_GAME, UPDATE_GAME, USER_DISCONNECTED, WAITING, WELCOME } from "../messages";
-import { Player } from "../types/gameTypes";
-import { pushToQueue, waitingQueue } from "../utils/pushToQueue";
+import { MessageType } from "../messages";
+import { updateReading } from "../utils/solanaClient";
 
 export class User {
   public socket: WebSocket;
-  public publicKey: string;
   public lastActive: number;
+  public isMicrocontroller: boolean;
+  public heartbeatInterval?: NodeJS.Timeout;
 
-  constructor(socket: WebSocket, publicKey: string) {
+  constructor(socket: WebSocket, isMicrocontroller: boolean) {
     this.socket = socket;
-    this.publicKey = publicKey;
     this.lastActive = Date.now();
+    this.isMicrocontroller = isMicrocontroller;
   }
 }
 
-export class Worker {
-  public socket: WebSocket;
-  public token: string;
-
-  constructor(socket: WebSocket, token: string) {
-    this.socket = socket;
-    this.token = token;
-  }
+interface AQIBreakpoint {
+  concentrationLow: number;
+  concentrationHigh: number;
+  indexLow: number;
+  indexHigh: number;
 }
 
-type MessageType = "CONNECTED" | "WELCOME" | "HEARTBEAT" | "ONLINE_USERS" | "START_GAME" | "UPDATE_GAME" | "WAITING" | "USER_DISCONNECTED" | "KEY_PRESSED" | "KEY_RELEASED" | "GAME_ENDED";
+const pm25Breakpoints: AQIBreakpoint[] = [
+  { concentrationLow: 0, concentrationHigh: 12, indexLow: 0, indexHigh: 50 },
+  { concentrationLow: 12.1, concentrationHigh: 35.4, indexLow: 51, indexHigh: 100 },
+  { concentrationLow: 35.5, concentrationHigh: 55.4, indexLow: 101, indexHigh: 150 },
+  { concentrationLow: 55.5, concentrationHigh: 150.4, indexLow: 151, indexHigh: 200 },
+  { concentrationLow: 150.5, concentrationHigh: 250.4, indexLow: 201, indexHigh: 300 },
+  { concentrationLow: 250.5, concentrationHigh: 350.4, indexLow: 301, indexHigh: 400 },
+  { concentrationLow: 350.5, concentrationHigh: 500.4, indexLow: 401, indexHigh: 500 }
+];
+
+const pm10Breakpoints: AQIBreakpoint[] = [
+  { concentrationLow: 0, concentrationHigh: 54, indexLow: 0, indexHigh: 50 },
+  { concentrationLow: 55, concentrationHigh: 154, indexLow: 51, indexHigh: 100 },
+  { concentrationLow: 155, concentrationHigh: 254, indexLow: 101, indexHigh: 150 },
+  { concentrationLow: 255, concentrationHigh: 354, indexLow: 151, indexHigh: 200 },
+  { concentrationLow: 355, concentrationHigh: 424, indexLow: 201, indexHigh: 300 },
+  { concentrationLow: 425, concentrationHigh: 504, indexLow: 301, indexHigh: 400 },
+  { concentrationLow: 505, concentrationHigh: 604, indexLow: 401, indexHigh: 500 }
+];
 
 export interface MessageData {
   type: MessageType;
@@ -34,13 +47,8 @@ export interface MessageData {
 }
 
 class SocketManager {
-  private users: User[] = [];
-  private worker: Worker[] = [];
+  public users: User[] = [];
   public static instance: SocketManager;
-
-  constructor() {
-    this.users = [];
-  }
 
   public static getInstance(): SocketManager {
     if (!SocketManager.instance) {
@@ -50,77 +58,26 @@ class SocketManager {
   }
 
   async addUser(user: User) {
-    const existing = this.users.find((u) => u.publicKey === user.publicKey);
-
-    if (existing) {
-      existing.socket.close();
-      this.users = this.users.filter((u) => u.publicKey !== user.publicKey);
-    }
-
     this.users.push(user);
-    // await this.handleReconnect(user);
+    console.log(`New user connected: ${this.users.length}`);
+
+    user.heartbeatInterval = setInterval(() => {
+      if (user.socket.readyState === user.socket.OPEN) {
+        user.socket.send(JSON.stringify({ type: MessageType.HEARTBEAT }));
+      }
+    }, 5000);
+
     this.userHandler(user);
   }
 
-  private async handleReconnect(user: User) {
-    // 1. Check if user is in a game
-    const gameId = await redis.get(`player:${user.publicKey}:game`);
-    if (gameId) {
-      const game = await redis.get(`game:${gameId}`);
-      if (game) {
-        const parsedGame = JSON.parse(game);
-        user.socket.send(JSON.stringify({
-          type: UPDATE_GAME,
-          payload: {
-            game: parsedGame,
-            gameState: parsedGame.gameState,
-            players: parsedGame.players,
-            energyOrbs: parsedGame.energyOrbs
-          }
-        }));
-      }
-    }
-  }
-
   removeUser(userSocket: WebSocket) {
-    const user = this.users.find((u) => u.socket === userSocket);
-    if (!user) return;
-
-    // Remove the user
-    this.users = this.users.filter((u) => u.socket !== userSocket);
-
-    // Notify all workers that the user has disconnected
-    const message: MessageData = {
-      type: USER_DISCONNECTED,
-      payload: { publicKey: user.publicKey }
-    };
-
-    this.worker.forEach((worker) => {
-      if (worker.socket.readyState === WebSocket.OPEN) {
-        worker.socket.send(JSON.stringify(message));
+    this.users = this.users.filter((u) => {
+      if (u.socket === userSocket) {
+        if (u.heartbeatInterval) clearInterval(u.heartbeatInterval);
+        return false;
       }
+      return true;
     });
-  }
-
-  getUserCount(): number {
-    return this.users.length;
-  }
-
-  getActiveUsers(): User[] {
-    const now = Date.now();
-    return this.users.filter(user =>
-      user.socket.readyState === WebSocket.OPEN &&
-      now - user.lastActive < 30000
-    );
-  }
-
-  addWorker(worker: Worker) {
-    this.worker.push(worker);
-    this.workerHandler(worker);
-  }
-
-  getWorkerCount(): number {
-    return this.worker.length;
   }
 
   private userHandler(user: User) {
@@ -128,135 +85,67 @@ class SocketManager {
       const data: MessageData = JSON.parse(message.data as string);
 
       switch (data.type) {
-        case CONNECTED:
-          user.socket.send(JSON.stringify({ type: WELCOME, payload: "Welcome to Power Spree!!" }));
+        case MessageType.CONNECTED:
+          user.socket.send(
+            JSON.stringify({ type: MessageType.WELCOME, payload: "Welcome to aeroscan!!" })
+          )
           break;
-        case START_GAME:
-          if (!data.payload.publicKey || user.publicKey !== data.payload.publicKey) {
+        case MessageType.HEARTBEAT:
+          user.lastActive = Date.now();
+          break;
+        case MessageType.UPDATE_DATA:
+          if (!user.isMicrocontroller) {
+            console.warn("UPDATE_DATA received from a non-microcontroller user.");
             return;
           }
 
-          let waitingUsers = await waitingQueue.getWaiting();
-          waitingUsers = waitingUsers.flatMap((user) => user.data);
-          if (waitingUsers.includes(data.payload.publicKey)) {
-            return;
+          try {
+            const { temperature, humidity, pm25, pm10 } = data.payload;
+
+            // function calculateSubIndex(concentration: number, breakpoints: AQIBreakpoint[]): number {
+            //   const bp = breakpoints.find(b => concentration >= b.concentrationLow && concentration <= b.concentrationHigh);
+            //   if (!bp) return 500;
+            //   const { concentrationLow, concentrationHigh, indexLow, indexHigh } = bp;
+            //   return Math.round(((indexHigh - indexLow) / (concentrationHigh - concentrationLow)) * (concentration - concentrationLow) + indexLow);
+            // }
+
+            // const aqiPm25 = calculateSubIndex(pm25, pm25Breakpoints);
+            // const aqiPm10 = calculateSubIndex(pm10, pm10Breakpoints);
+
+            // const aqi = Math.max(aqiPm25, aqiPm10);
+
+            // TODO: Add pm25, pm10, and aqi
+            updateReading(0, 0, temperature, humidity);
+
+            // Broadcast to connected users
+            this.users.forEach((u) => {
+              if (u.socket.readyState === u.socket.OPEN) {
+                u.socket.send(JSON.stringify({
+                  type: MessageType.UPDATE_DATA,
+                  payload: {
+                    temperature,
+                    humidity,
+                    // TODO: Add pm25, pm10, and aqi
+                    // pm25,
+                    // pm10,
+                    // aqi
+                  }
+                }));
+              }
+            })
+          } catch (err) {
+            console.error("Error handling UPDATE_DATA:", err);
           }
-          pushToQueue(data.payload.publicKey);
           break;
-        case KEY_PRESSED:
-          if (!data.payload.publicKey || user.publicKey !== data.payload.publicKey) {
-            return;
-          }
-          const pressedKey = ValidKeyStroke(data.payload.key);
-          if (!pressedKey) {
-            return;
-          }
-          // Send to Worker
-          this.worker.forEach((worker) => {
-            if (worker.socket.readyState === WebSocket.OPEN) {
-              worker.socket.send(JSON.stringify(data));
-            }
-          })
-          break;
-        case KEY_RELEASED:
-          if (!data.payload.publicKey || user.publicKey !== data.payload.publicKey) {
-            return;
-          }
-          const releasedKey = ValidKeyStroke(data.payload.key);
-          if (!releasedKey) {
-            return;
-          }
-          // Send to Worker
-          this.worker.forEach((worker) => {
-            if (worker.socket.readyState === WebSocket.OPEN) {
-              worker.socket.send(JSON.stringify(data));
-            }
-          })
         default:
+          console.warn(`Received unknown message type: ${data.type}`);
           break;
       }
     };
-  }
 
-  private workerHandler(worker: Worker) {
-    worker.socket.onmessage = async (message: MessageEvent) => {
-      const data: MessageData = JSON.parse(message.data as string);
-
-      switch (data.type) {
-        case CONNECTED:
-          worker.socket.send(JSON.stringify({ type: WELCOME, payload: "Welcome to Power Spree!!" }));
-          break;
-        case UPDATE_GAME:
-          const { players: updatedPlayers } = data.payload;
-          updatedPlayers.forEach((player: Player) => {
-            const user = this.users.find((u) => u.publicKey === player.id);
-            if (user) {
-              user.socket.send(JSON.stringify({
-                type: UPDATE_GAME,
-                payload: {
-                  game: data.payload.game,
-                  players: data.payload.players,
-                  energyOrbs: data.payload.energyOrbs,
-                  player_1_keys: data.payload.player_1_keys,
-                  player_2_keys: data.payload.player_2_keys,
-                }
-              }));
-            }
-          });
-          break;
-        case START_GAME:
-          const { players: startPlayers } = data.payload;
-          startPlayers.forEach((player: Player) => {
-            const user = this.users.find((u) => u.publicKey === player.id);
-            if (user) {
-              user.lastActive = Date.now();
-              user.socket.send(JSON.stringify({
-                type: START_GAME,
-                payload: {
-                  game: data.payload.game,
-                  players: data.payload.players,
-                  energyOrbs: data.payload.energyOrbs,
-                  publicKey: player.id,
-                  player_1_keys: data.payload.player_1_keys,
-                  player_2_keys: data.payload.player_2_keys
-                }
-              }));
-            }
-          });
-          break;
-        case WAITING:
-          const { players: waitingPlayers } = data.payload;
-          waitingPlayers.forEach((publicKey: string) => {
-            const user = this.users.find((u) => u.publicKey === publicKey);
-            if (user) {
-              user.lastActive = Date.now();
-              user.socket.send(JSON.stringify({
-                type: WAITING,
-                payload: { players: waitingPlayers }
-              }));
-            }
-          });
-          break;
-        case GAME_ENDED:
-          const { players: gameEndedPlayers } = data.payload;
-          gameEndedPlayers.forEach((publicKey: string) => {
-            const user = this.users.find((u) => u.publicKey === publicKey);
-            if (user) {
-              user.lastActive = Date.now();
-              user.socket.send(JSON.stringify({
-                type: GAME_ENDED,
-                payload: { 
-                  gameID: data.payload.gameID,
-                  players: gameEndedPlayers,
-                  winner: data.payload.winner
-                }
-              }));
-            }
-          });
-          break;
-        default:
-          break;
-      }
+    user.socket.onclose = () => {
+      this.removeUser(user.socket);
+      console.log("User disconnected");
     };
   }
 }

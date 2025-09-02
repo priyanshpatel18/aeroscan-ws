@@ -1,0 +1,4 @@
+ignoredBuiltDependencies:
+  - '@prisma/client'
+  - bufferutil
+  - utf-8-validate

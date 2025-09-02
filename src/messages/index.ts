@@ -1,11 +1,10 @@
-export const CONNECTED = "CONNECTED";
-export const HEARTBEAT = "HEARTBEAT";
-export const WELCOME = "WELCOME";
-export const ONLINE_USERS = "ONLINE_USERS";
-export const WAITING = "WAITING";
-export const START_GAME = "START_GAME";
-export const UPDATE_GAME = "UPDATE_GAME";
-export const USER_DISCONNECTED = "USER_DISCONNECTED";
-export const KEY_PRESSED = "KEY_PRESSED";
-export const KEY_RELEASED = "KEY_RELEASED";
-export const GAME_ENDED = "GAME_ENDED";
+export enum MessageType {
+  ONLINE_USERS = "ONLINE_USERS",
+  CONNECTED = "CONNECTED",
+  USER_DISCONNECTED = "USER_DISCONNECTED",
+  PING = "PING",
+  PONG = "PONG",
+  HEARTBEAT = "HEARTBEAT",
+  WELCOME = "WELCOME",
+  UPDATE_DATA = "UPDATE_DATA"
+}
