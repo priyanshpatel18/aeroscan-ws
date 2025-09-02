@@ -1,4 +1,4 @@
-# Aeroscan WebSocket Server
+# aeroscan-ws
 
 A real-time air quality monitoring WebSocket server that connects microcontrollers and clients for environmental data collection and broadcasting.
 
@@ -245,4 +245,4 @@ The server handles:
 
 ## License
 
-MIT License - see LICENSE file for details
+[MIT License](LICENSE) - see LICENSE file for details
