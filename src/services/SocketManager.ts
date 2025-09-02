@@ -124,33 +124,8 @@ class SocketManager {
 
             // const aqi = Math.max(aqiPm25, aqiPm10);
 
-            const now = Date.now();
-            this.history.push({ timestamp: now, temperature, humidity, pm25, pm10, aqi: 0 });
-
-            // Remove old readings
-            while (this.history.length && now - this.history[0].timestamp > this.HISTORY_RETENTION_MS) {
-              this.history.shift();
-            }
             // TODO: Add pm25, pm10, and aqi
             updateReading(0, 0, temperature, humidity, 0);
-
-            // Broadcast to connected users
-            this.users.forEach((u) => {
-              if (u.socket.readyState === u.socket.OPEN) {
-                u.socket.send(JSON.stringify({
-                  type: MessageType.UPDATE_DATA,
-                  payload: {
-                    temperature,
-                    humidity,
-                    // TODO: Add pm25, pm10, and aqi
-                    pm25,
-                    pm10,
-                    aqi: 0,
-                    history: this.history
-                  }
-                }));
-              }
-            })
           } catch (err) {
             console.error("Error handling UPDATE_DATA:", err);
           }

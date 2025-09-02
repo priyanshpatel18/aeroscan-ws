@@ -1,6 +1,8 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { db } from "../db";
+import SocketManager from "../services/SocketManager";
+import { MessageType } from "../messages";
 const bs58 = require("bs58").default;
 
 const PROGRAM_ID = new PublicKey("aero8wSmn3uAj5g5jYq92Rd2SQv2MtGxu1ZXfysfFHX");
@@ -110,6 +112,39 @@ export async function subscribeToEvents(onEvent?: (event: any) => void) {
               parsedData[key] = (value as any)?.toNumber?.() ?? value;
             }
           }
+
+          const now = Date.now();
+          SocketManager.history.push({
+            timestamp: now,
+            temperature: parsedData.temperature,
+            humidity: parsedData.humidity,
+            pm25: parsedData.pm25,
+            pm10: parsedData.pm10,
+            aqi: parsedData.aqi
+          });
+
+          // Remove old readings
+          while (SocketManager.history.length && now - SocketManager.history[0].timestamp > SocketManager.HISTORY_RETENTION_MS) {
+            SocketManager.history.shift();
+          }
+
+          // Broadcast to connected users
+          SocketManager.users.forEach((u) => {
+            if (u.socket.readyState === u.socket.OPEN) {
+              u.socket.send(JSON.stringify({
+                type: MessageType.UPDATE_DATA,
+                payload: {
+                  temperature: parsedData.temperature,
+                  humidity: parsedData.humidity,
+                  // TODO: Add pm25, pm10, and aqi
+                  pm25: parsedData.pm25,
+                  pm10: parsedData.pm10,
+                  aqi: parsedData.aqi,
+                  history: SocketManager.history
+                }
+              }));
+            }
+          })
 
           await db.sensorReading.create({
             data: {
