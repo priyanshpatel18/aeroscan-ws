@@ -97,7 +97,12 @@ class SocketManager {
       switch (data.type) {
         case MessageType.CONNECTED:
           user.socket.send(
-            JSON.stringify({ type: MessageType.WELCOME, payload: "Welcome to aeroscan!!" })
+            JSON.stringify({
+              type: MessageType.WELCOME, payload: {
+                message: "Welcome to aeroscan!!",
+                history: this.history
+              }
+            })
           )
           break;
         case MessageType.HEARTBEAT:

@@ -21,6 +21,8 @@ async function main() {
     const user = new User(ws, token === process.env.MC_TOKEN);
     SocketManager.addUser(user);
 
+    console.log(`User connected: ${user.isMicrocontroller}`);
+    
     ws.onclose = () => { SocketManager.removeUser(ws); };
   });
 }

@@ -64,7 +64,7 @@ export async function updateReading(
   const program = await getProgramClient();
 
   const tx = await program.methods
-    .updateReading(solanaProvider.wallet.publicKey, pm25, pm10, temperature, humidity, aqi)
+    .updateReading(magicblockProvider.wallet.publicKey, pm25, pm10, temperature, humidity, aqi)
     .accounts({
       sensorReading: SENSOR_READING_PDA,
     })
@@ -75,15 +75,15 @@ export async function updateReading(
   } = await solanaConnection.getLatestBlockhashAndContext();
 
   tx.recentBlockhash = blockhash;
-  tx.feePayer = solanaProvider.wallet.publicKey;
+  tx.feePayer = magicblockProvider.wallet.publicKey;
 
-  tx.sign((solanaProvider.wallet as anchor.Wallet).payer);
+  tx.sign((magicblockProvider.wallet as anchor.Wallet).payer);
 
-  const signature = await solanaConnection.sendRawTransaction(tx.serialize(), {
+  const signature = await magicblockConnection.sendRawTransaction(tx.serialize(), {
     skipPreflight: true,
   });
 
-  await solanaConnection.confirmTransaction(
+  await magicblockConnection.confirmTransaction(
     { blockhash, lastValidBlockHeight, signature },
     "processed"
   );
@@ -94,7 +94,7 @@ export async function subscribeToEvents(onEvent?: (event: any) => void) {
   const program = await getProgramClient();
   const eventParser = new anchor.EventParser(PROGRAM_ID, program.coder);
 
-  solanaConnection.onLogs(
+  magicblockConnection.onLogs(
     PROGRAM_ID,
     async (log) => {
       try {
@@ -102,7 +102,8 @@ export async function subscribeToEvents(onEvent?: (event: any) => void) {
 
         for (const event of events) {
           if (event.name !== "sensorReadingEvent") continue;
-
+          console.log("Event: ", event.name);
+          
           // Convert BN to number
           const parsedData: Record<string, any> = {};
           for (const [key, value] of Object.entries(event.data)) {
