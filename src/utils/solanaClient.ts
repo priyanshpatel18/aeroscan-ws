@@ -103,7 +103,7 @@ export async function subscribeToEvents(onEvent?: (event: any) => void) {
         for (const event of events) {
           if (event.name !== "sensorReadingEvent") continue;
           console.log("Event: ", event.name);
-          
+
           // Convert BN to number
           const parsedData: Record<string, any> = {};
           for (const [key, value] of Object.entries(event.data)) {
@@ -114,15 +114,10 @@ export async function subscribeToEvents(onEvent?: (event: any) => void) {
             }
           }
 
+          const { temperature, humidity, pm25, pm10, aqi } = parsedData;
+
           const now = Date.now();
-          SocketManager.history.push({
-            timestamp: now,
-            temperature: parsedData.temperature,
-            humidity: parsedData.humidity,
-            pm25: parsedData.pm25,
-            pm10: parsedData.pm10,
-            aqi: parsedData.aqi
-          });
+          SocketManager.addReading({ timestamp: now, temperature, humidity, pm25, pm10, aqi });
 
           // Remove old readings
           while (SocketManager.history.length && now - SocketManager.history[0].timestamp > SocketManager.HISTORY_RETENTION_MS) {
@@ -135,12 +130,12 @@ export async function subscribeToEvents(onEvent?: (event: any) => void) {
               u.socket.send(JSON.stringify({
                 type: MessageType.UPDATE_DATA,
                 payload: {
-                  temperature: parsedData.temperature,
-                  humidity: parsedData.humidity,
+                  temperature,
+                  humidity,
                   // TODO: Add pm25, pm10, and aqi
-                  pm25: parsedData.pm25,
-                  pm10: parsedData.pm10,
-                  aqi: parsedData.aqi,
+                  pm25,
+                  pm10,
+                  aqi,
                   history: SocketManager.history
                 }
               }));
@@ -149,11 +144,11 @@ export async function subscribeToEvents(onEvent?: (event: any) => void) {
 
           await db.sensorReading.create({
             data: {
-              temperature: parsedData.temperature,
-              humidity: parsedData.humidity,
-              pm25: parsedData.pm25,
-              pm10: parsedData.pm10,
-              aqi: parsedData.aqi,
+              temperature,
+              humidity,
+              pm25,
+              pm10,
+              aqi,
             }
           });
 

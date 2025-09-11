@@ -59,7 +59,8 @@ class SocketManager {
   public users: User[] = [];
   public static instance: SocketManager;
   public history: Reading[] = [];
-  public readonly HISTORY_RETENTION_MS = 24 * 60 * 60 * 1000; // 24h
+  public readonly HISTORY_RETENTION_MS = 24 * 60 * 60 * 1000;
+  public readonly MAX_HISTORY_ENTRIES = 2_000_000;
 
   public static getInstance(): SocketManager {
     if (!SocketManager.instance) {
@@ -89,6 +90,16 @@ class SocketManager {
       return true;
     });
   }
+
+  public addReading(reading: Reading) {
+    this.history.push(reading);
+
+    if (this.history.length > this.MAX_HISTORY_ENTRIES) {
+      const overflow = this.history.length - this.MAX_HISTORY_ENTRIES;
+      this.history.splice(0, overflow);
+    }
+  }
+
 
   private userHandler(user: User) {
     user.socket.onmessage = async (message: MessageEvent) => {
